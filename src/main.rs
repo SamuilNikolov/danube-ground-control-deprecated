@@ -53,7 +53,7 @@ fn get_telemetry(state: &State<SharedTelemetry>) -> Json<Telemetry> {
 #[get("/")]
 fn index() -> RawHtml<&'static str> {
     RawHtml(
-    r#"<!DOCTYPE html>
+        r#"<!DOCTYPE html>
 <html>
   <head>
     <meta charset="utf-8">
@@ -77,7 +77,8 @@ fn index() -> RawHtml<&'static str> {
     </script>
   </body>
 </html>
-"# )
+"#
+    )
 }
 
 /// Given a telemetry line string, try to parse it and return a Telemetry instance.
@@ -144,19 +145,16 @@ fn parse_telemetry_line(line: &str) -> Option<Telemetry> {
 
 /// This function spawns a loop that continuously reads lines from the serial port.
 /// Each valid telemetry line updates the shared telemetry state.
-fn spawn_serial_reader(state: SharedTelemetry) {
-    // Use the environment variable "SERIAL_PORT" or default to "/dev/ttyUSB0"
-    let port_name = std::env::var("SERIAL_PORT").unwrap_or_else(|_| "/dev/ttyUSB0".into());
-
+fn spawn_serial_reader(state: SharedTelemetry, port_name: String) {
     // Open the serial port with the expected baud rate (115200 in this case).
-    let port = serialport::new(port_name, 115200)
+    let port = serialport::new(port_name.clone(), 115200)
         .timeout(Duration::from_millis(100))
         .open();
 
     let mut port = match port {
         Ok(p) => p,
         Err(e) => {
-            eprintln!("Failed to open serial port: {:?}", e);
+            eprintln!("Failed to open serial port '{}': {:?}", port_name, e);
             return;
         }
     };
@@ -187,13 +185,18 @@ fn spawn_serial_reader(state: SharedTelemetry) {
 /// The Rocket entry-point.
 #[launch]
 fn rocket() -> _ {
+    // Read the first command-line argument for the COM port.
+    // When running with cargo run, the first argument after the binary name will be used.
+    let port_name = std::env::args().nth(1).unwrap_or_else(|| "COM5".into());
+    println!("Using serial port: {}", port_name);
+
     // Create the shared telemetry state.
     let telemetry: SharedTelemetry = Arc::new(Mutex::new(Telemetry::default()));
 
     // Clone the shared state for the serial reader thread.
     let telemetry_clone = telemetry.clone();
     thread::spawn(move || {
-        spawn_serial_reader(telemetry_clone);
+        spawn_serial_reader(telemetry_clone, port_name);
     });
 
     // Build and launch Rocket.
